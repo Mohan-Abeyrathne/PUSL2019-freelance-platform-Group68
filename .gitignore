@@ -1,0 +1,18 @@
+# Local environment & sensitive database credentials
+.env
+config/local_config.php
+
+# Operating system files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor & IDE folders
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs & temporary files
+*.log
+*.tmp
