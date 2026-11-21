@@ -48,15 +48,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $bio = mysqli_real_escape_string($conn, trim($_POST["bio"]));
                     $hourly_rate = (float) $_POST["hourly_rate"];
                     $experience_years = (int) $_POST["experience_years"];
+                    
 
-                    if ($headline == "") {
-                        $headline = "AI & Data Specialist";
-                    }
-                    if ($bio == "") {
-                        $bioSql = "NULL";
-                    } else {
-                        $bioSql = "'$bio'";
-                    }
+                    // if ($headline == "") {
+                    //     $headline = "AI & Data Specialist";
+                    // }
+                    // if ($bio == "") {
+                    //     $bioSql = "NULL";
+                    // } else {
+                    //     $bioSql = "'$bio'";
+                    // }
+
+                    if ($headline == "" || $bio == "") {
+                        $error = "Please enter both headline and bio for a Freelancer account.";
+                    }else{
+                    $bioSql = "'$bio'";
 
                     if ($hourly_rate <= 0) {
                         $hourly_rate = 25.00;
@@ -68,6 +74,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $insertFreeSql = "INSERT INTO freelancers (freelancer_id, headline, bio, hourly_rate, experience_years, availability_status)
                                         VALUES ($newUserId, '$headline', $bioSql, $hourly_rate, $experience_years, 'Available')";                   
                     mysqli_query($conn, $insertFreeSql);
+                    $message = "Account created successfully! You can now log in.";
+                    }
 
                 } else {
                     $client_type = mysqli_real_escape_string($conn, $_POST["client_type"]);
@@ -97,9 +105,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     $insertClientSql = "INSERT INTO clients (client_id, client_type, organization_name, industry, country)
                                         VALUES ($newUserId, '$client_type', $orgSql, $indSql, '$country')";                    
                     mysqli_query($conn, $insertClientSql);
+                    $message = "Account created successfully! You can now log in.";
                 }
 
-                $message = "Account created successfully! You can now log in.";
+                
             } else {
                 $error = "Registration failed: " . mysqli_error($conn);
             }
@@ -167,11 +176,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         <h2 class="h6 mb-3">Freelancer Details</h2>
                         <div class="mb-3">
                             <label class="form-label">Headline</label>
-                            <input type="text" name="headline" class="form-control" placeholder="e.g. Machine Learning & NLP Engineer" required>
+                            <input type="text" id="headlineInput" name="headline" class="form-control" placeholder="e.g. Machine Learning & NLP Engineer">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Bio</label>
-                            <textarea name="bio" rows="2" class="form-control" placeholder="Short summary of your AI experience..." required></textarea>
+                            <textarea name="bio" id="bioInput" rows="2" class="form-control" placeholder="Short summary of your AI experience..."></textarea>
                         </div>
                         <div class="row g-2">
                             <div class="col-6">
@@ -198,7 +207,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             </div>
                             <div class="col-6">
                                 <label class="form-label">Country</label>
-                                <input type="text" name="country" class="form-control" value="Sri Lanka" required>
+                                <input type="text" name="country" class="form-control" value="Sri Lanka">
                             </div>
                         </div>
                         <div class="mb-3">
@@ -260,13 +269,19 @@ function toggleRoleFields() {
     var role = document.getElementById("roleSelect").value;
     var freelancerBox = document.getElementById("freelancerFields");
     var clientBox = document.getElementById("clientFields");
+    var headlineInput = document.getElementById("headlineInput");
+    var bioInput = document.getElementById("bioInput");
 
     if (role === "Client") {
         freelancerBox.style.display = "none";
         clientBox.style.display = "block";
+        headlineInput.required = false;
+        bioInput.required = false;
     } else {
         freelancerBox.style.display = "block";
         clientBox.style.display = "none";
+        headlineInput.required = true;
+        bioInput.required = true;
     }
 }
 
