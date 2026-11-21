@@ -1,3 +1,9 @@
+<?php
+if (session_status() == PHP_SESSION_NONE) {
+    session_start();
+}
+?>
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -21,6 +27,18 @@
                 <li class="nav-item"><a class="nav-link" href="proposals.php">Proposals & Assignments</a></li>
                 <li class="nav-item"><a class="nav-link" href="payments_reports.php">Payments & Reports</a></li>
             </ul>
+            <div class="d-flex align-items-center gap-2">
+                <?php if (isset($_SESSION["user_id"])) { ?>
+                    <span class="text-light small">
+                        <?php echo htmlspecialchars($_SESSION["full_name"]); ?>
+                        (<?php echo htmlspecialchars($_SESSION["role"]); ?>)
+                    </span>
+                    <a href="logout.php" class="btn btn-outline-light btn-sm">Logout</a>
+                <?php } else { ?>
+                    <a href="login.php" class="btn btn-outline-light btn-sm">Login</a>
+                    <a href="register.php" class="btn btn-warning btn-sm">Register</a>
+                <?php } ?>
+            </div>
         </div>
     </div>
 </nav>
