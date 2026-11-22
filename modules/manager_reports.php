@@ -20,6 +20,11 @@ $grossPayments = 0.00;
 $totalFees = 0.00;
 $netPayouts = 0.00;
 
+$minBudgetFilter = "";
+if (isset($_GET["min_budget"]) && trim($_GET["min_budget"]) != "") {
+    $minBudgetFilter = (float) $_GET["min_budget"];
+}
+
 if ($error == "") {
     // get activity counts
     $r1 = mysqli_query($conn, "SELECT COUNT(*) AS cnt FROM projects");
@@ -137,6 +142,116 @@ if ($error == "") {
         </div>
     </div>
 
+    <!-- Projects & Budget Report (vw_ProjectDetails + sp_GetProjectsByMinBudget) -->
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body">
+            <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                <h2 class="h5 mb-0">Projects & Budget Report</h2>
+                <form method="GET" action="manager_reports.php" class="d-flex gap-2">
+                    <input type="number" step="0.01" name="min_budget" class="form-control form-control-sm"
+                            value="<?php echo htmlspecialchars($minBudgetFilter); ?>"
+                            placeholder="Min budget ($)...">
+                    <button type="submit" class="btn btn-sm btn-dark">Filter</button>
+                    <?php if ($minBudgetFilter !== "") { ?>
+                        <a href="manager_reports.php" class="btn btn-sm btn-outline-secondary">Reset</a>
+                    <?php } ?>
+                </form>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-bordered table-hover align-middle mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>ID</th>
+                            <th>Project Title</th>
+                            <th>Client</th>
+                            <th>Budget ($)</th>
+                            <th>Status</th>
+                            <th>Deadline</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        $projRows = array();
+
+                        if ($minBudgetFilter !== "") {
+                            // Call stored procedure sp_GetProjectsByMinBudget
+                            $spRes = mysqli_query($conn, "CALL sp_GetProjectsByMinBudget($minBudgetFilter)");
+                            if ($spRes) {
+                                while ($r = mysqli_fetch_assoc($spRes)) {
+                                    $projRows[] = $r;
+                                }
+                                mysqli_free_result($spRes);
+                                while (mysqli_more_results($conn) && mysqli_next_result($conn)) {
+                                    $extra = mysqli_use_result($conn);
+                                    if ($extra) { mysqli_free_result($extra); }
+                                }
+                            }
+                        } else {
+                            // query vw_ProjectDetails for default values
+                            $vwRes = mysqli_query($conn, "SELECT * FROM vw_ProjectDetails ORDER BY project_id DESC");
+                            if ($vwRes) {
+                                while ($r = mysqli_fetch_assoc($vwRes)) {
+                                    $projRows[] = $r;
+                                }
+                            }
+                        }
+
+                        if (count($projRows) > 0) {
+                            foreach ($projRows as $pRow) {
+                                $pId       = $pRow["project_id"] ?? "-";
+                                $pTitle    = $pRow["title"] ?? $pRow["project_title"] ?? "-";
+                                // $pClient   = $pRow["client_name"] ?? "-";
+                                $pBudget   = (float)($pRow["budget"] ?? 0);
+                                $pStatus   = $pRow["project_status"] ?? "-";
+                                $pDeadline = $pRow["deadline"] ?? "-";
+
+                                $pClient = $pRow["client_name"] ?? "";
+                                if ($pClient == "") {
+                                    if (isset($pRow["client_id"]) && (int)$pRow["client_id"] > 0) {
+                                        $cid = (int)$pRow["client_id"];
+                                        $cRes = mysqli_query($conn, "SELECT u.full_name FROM users u WHERE u.user_id = $cid LIMIT 1");
+                                        if ($cRes && mysqli_num_rows($cRes) == 1) {
+                                            $cRow = mysqli_fetch_assoc($cRes);
+                                            $pClient = $cRow["full_name"];
+                                        }
+                                    } elseif ((int)$pId > 0) {
+                                        $pidInt = (int)$pId;
+                                        $cRes = mysqli_query($conn, "SELECT u.full_name
+                                                                    FROM projects p
+                                                                    JOIN users u ON p.client_id = u.user_id
+                                                                    WHERE p.project_id = $pidInt
+                                                                    LIMIT 1");
+                                        if ($cRes && mysqli_num_rows($cRes) == 1) {
+                                            $cRow = mysqli_fetch_assoc($cRes);
+                                            $pClient = $cRow["full_name"];
+                                        }
+                                    }
+                                }
+                                if ($pClient == "") {
+                                    $pClient = "-";
+                                }
+
+                        ?>
+                            <tr>
+                                <td><?php echo $pId; ?></td>
+                                <td><?php echo htmlspecialchars($pTitle); ?></td>
+                                <td><?php echo htmlspecialchars($pClient); ?></td>
+                                <td>$<?php echo number_format($pBudget, 2); ?></td>
+                                <td><?php echo htmlspecialchars($pStatus); ?></td>
+                                <td><?php echo htmlspecialchars($pDeadline); ?></td>
+                            </tr>
+                        <?php
+                            }
+                        } else {
+                        ?>
+                            <tr><td colspan="6" class="text-center text-muted">No projects found matching this criteria.</td></tr>
+                        <?php } ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 <?php } ?>
 
 <?php
