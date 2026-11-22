@@ -5,6 +5,7 @@ $basePath = "../";
 include "../config/db.php";
 include "../includes/header.php";
 
+global $conn;
 $message = "";
 $error = "";
 
@@ -12,7 +13,88 @@ if (!isset($_SESSION["user_id"]) || $_SESSION["role"] != "Admin") {
     $error = "Access denied. Please log in with an Admin account to view this page!!";
 }
 
-global $conn;
+
+if ($error == "" && $_SERVER["REQUEST_METHOD"] == "POST") {
+    $action = $_POST["action"];
+// update user section
+    if ($action == "update_user_status") {
+        $targetUserId = (int) $_POST["user_id"];
+        $newStatus = mysqli_real_escape_string($conn, $_POST["account_status"]);
+
+        if ($newStatus != "Active" && $newStatus != "Suspended" && $newStatus != "Inactive") {
+            $newStatus = "Active";
+        }
+
+        $updUserSql = "UPDATE users SET account_status = '$newStatus' WHERE user_id = $targetUserId";
+        if (mysqli_query($conn, $updUserSql)) {
+            $message = "User #$targetUserId status updated to $newStatus.";
+        } else {
+            $error = "Failed to update user status: " . mysqli_error($conn);
+        }
+    }
+
+    // Add a new AI skill using stored procedure sp_AddSkill
+    if ($action == "add_skill") {
+        $skillName = mysqli_real_escape_string($conn, trim($_POST["skill_name"]));
+        $aiDomain = mysqli_real_escape_string($conn, $_POST["ai_domain"]);
+        $description = mysqli_real_escape_string($conn, trim($_POST["description"]));
+
+        if ($skillName == "") {
+            $error = "Please enter an AI skill name.";
+        } else {
+            if ($description == "") {
+                $descSql = "NULL";
+            } else {
+                $descSql = "'$description'";
+            }
+
+            $callSpSql = "CALL sp_AddSkill('$skillName', '$aiDomain', $descSql)";
+            //handling the errors can occur with the sp call
+            if (mysqli_query($conn, $callSpSql)) {
+                while (mysqli_more_results($conn) && mysqli_next_result($conn)) {
+                    $extraRes = mysqli_use_result($conn);
+                    if ($extraRes) {
+                        mysqli_free_result($extraRes);
+                    }
+                }
+                $message = "AI skill '$skillName' added successfully.";
+            } else {
+                    $error = "Could not add AI skill: " . mysqli_error($conn);
+                }
+            
+        }
+    }
+
+    // Resolve or update a dispute section
+    if ($action == "resolve_dispute") {
+        $disputeId = (int) $_POST["dispute_id"];
+        $disputeStatus = mysqli_real_escape_string($conn, $_POST["dispute_status"]);
+        $resNotes = mysqli_real_escape_string($conn, trim($_POST["resolution_notes"]));
+        $adminId = (int) $_SESSION["user_id"];
+
+        if ($disputeStatus != "Open" && $disputeStatus != "Under Review" && $disputeStatus != "Resolved") {
+            $disputeStatus = "Under Review";
+        }
+
+        if ($resNotes == "") {
+            $notesSql = "NULL";
+        } else {
+            $notesSql = "'$resNotes'";
+        }
+
+        $updDisputeSql = "UPDATE disputes
+                            SET dispute_status = '$disputeStatus',
+                            resolution_notes = $notesSql,
+                            resolved_by = $adminId
+                        WHERE dispute_id = $disputeId";
+
+        if (mysqli_query($conn, $updDisputeSql)) {
+            $message = "Dispute #$disputeId updated to '$disputeStatus'.";
+        } else {
+            $error = "Failed to update dispute: " . mysqli_error($conn);
+        }
+    }
+}
 ?>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
