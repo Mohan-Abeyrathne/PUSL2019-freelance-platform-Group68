@@ -2,6 +2,11 @@
 if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
+
+//variable for manage paths
+if (!isset($basePath)) {
+    $basePath = "";
+}
 ?>
 
 <!DOCTYPE html>
@@ -15,17 +20,20 @@ if (session_status() == PHP_SESSION_NONE) {
 <body class="bg-light d-flex flex-column min-vh-100">
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
     <div class="container">
-        <a class="navbar-brand fw-semibold" href="index.php">AI Freelance.com</a>
+        <a class="navbar-brand fw-semibold" href="<?php echo $basePath; ?>index.php">AI Freelance.com</a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="mainNav">
             <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                <li class="nav-item"><a class="nav-link" href="index.php">Overview</a></li>
-                <li class="nav-item"><a class="nav-link" href="freelancers.php">Freelancers & AI Skills</a></li>
-                <li class="nav-item"><a class="nav-link" href="projects.php">Projects</a></li>
-                <li class="nav-item"><a class="nav-link" href="proposals.php">Proposals & Assignments</a></li>
-                <li class="nav-item"><a class="nav-link" href="payments_reports.php">Payments & Reports</a></li>
+                <li class="nav-item"><a class="nav-link" href="<?php echo $basePath; ?>index.php">Overview</a></li>
+                <li class="nav-item"><a class="nav-link" href="<?php echo $basePath; ?>freelancers.php">Freelancers & AI Skills</a></li>
+                <li class="nav-item"><a class="nav-link" href="<?php echo $basePath; ?>projects.php">Projects</a></li>
+                <li class="nav-item"><a class="nav-link" href="<?php echo $basePath; ?>proposals.php">Proposals & Assignments</a></li>
+                <li class="nav-item"><a class="nav-link" href="<?php echo $basePath; ?>payments_reports.php">Payments & Reports</a></li>
+                <?php if (isset($_SESSION["role"]) && $_SESSION["role"] == "Admin") { ?>
+                    <li class="nav-item"><a class="nav-link text-warning" href="<?php echo $basePath; ?>modules/admin_dashboard.php">Admin Panel</a></li>
+                <?php } ?>
             </ul>
             <div class="d-flex align-items-center gap-2">
                 <?php if (isset($_SESSION["user_id"])) { ?>
@@ -33,10 +41,10 @@ if (session_status() == PHP_SESSION_NONE) {
                         <?php echo htmlspecialchars($_SESSION["full_name"]); ?>
                         (<?php echo htmlspecialchars($_SESSION["role"]); ?>)
                     </span>
-                    <a href="logout.php" class="btn btn-outline-light btn-sm">Logout</a>
+                    <a href="<?php echo $basePath; ?>logout.php" class="btn btn-outline-light btn-sm">Logout</a>
                 <?php } else { ?>
-                    <a href="login.php" class="btn btn-outline-light btn-sm">Login</a>
-                    <a href="register.php" class="btn btn-warning btn-sm">Register</a>
+                    <a href="<?php echo $basePath; ?>login.php" class="btn btn-outline-light btn-sm">Login</a>
+                    <a href="<?php echo $basePath; ?>register.php" class="btn btn-warning btn-sm">Register</a>
                 <?php } ?>
             </div>
         </div>
