@@ -4,6 +4,7 @@ $basePath = "../";
 include "../config/db.php";
 include "../includes/header.php";
 
+global $conn;
 $error = "";
 
 if (!isset($_SESSION["user_id"]) || ($_SESSION["role"] != "Manager" && $_SESSION["role"] != "Admin")) {
@@ -19,6 +20,44 @@ $grossPayments = 0.00;
 $totalFees = 0.00;
 $netPayouts = 0.00;
 
+if ($error == "") {
+    // get activity counts
+    $r1 = mysqli_query($conn, "SELECT COUNT(*) AS cnt FROM projects");
+    if ($r1) { $row1 = mysqli_fetch_assoc($r1); 
+    $totalProjects = (int) $row1["cnt"]; 
+    }
+
+    $r2 = mysqli_query($conn, "SELECT COUNT(*) AS cnt FROM project_assignments");
+    if ($r2) { $row2 = mysqli_fetch_assoc($r2); 
+    $totalAssignments = (int) $row2["cnt"]; 
+    }
+
+    $r3 = mysqli_query($conn, "SELECT COUNT(*) AS cnt FROM ai_services WHERE is_active = 1");
+    if ($r3) { $row3 = mysqli_fetch_assoc($r3); 
+    $totalServices = (int) $row3["cnt"]; 
+    }
+
+    $r4 = mysqli_query($conn, "SELECT COUNT(*) AS cnt FROM disputes WHERE dispute_status != 'Resolved'");
+    if ($r4) { $row4 = mysqli_fetch_assoc($r4); 
+    $openDisputes = (int) $row4["cnt"]; 
+    }
+    // Financial summary using udf fn_CalculateNetPayout
+    $paySumSql = "SELECT
+                    COALESCE(SUM(amount), 0) AS gross_amt,
+                    COALESCE(SUM(platform_fee), 0) AS fee_amt,
+                    COALESCE(SUM(fn_CalculateNetPayout(amount, platform_fee)), 0) AS net_amt
+                    FROM payments
+                    WHERE payment_status = 'Completed'";
+    $r5 = mysqli_query($conn, $paySumSql);
+    if ($r5) {
+        $row5 = mysqli_fetch_assoc($r5);
+        $grossPayments = (float) $row5["gross_amt"];
+        $totalFees = (float) $row5["fee_amt"];
+        $netPayouts = (float) $row5["net_amt"];
+    }
+
+    }
+
 ?>
 
 <div class="d-flex justify-content-between align-items-center mb-4">
@@ -32,7 +71,7 @@ $netPayouts = 0.00;
     <div class="alert alert-danger"><?php echo $error; ?></div>
 <?php } else { ?>
 
-    //Activity Cards 
+    <!-- Activity Cards  -->
     <div class="row g-3 mb-4">
         <h3 class="h5 mb-1">Platform Activities</h3>
         <div class="col-md-3">
@@ -69,7 +108,7 @@ $netPayouts = 0.00;
         </div>
     </div>
 
-    //Revenue & Payout summary cards
+    <!-- Revenue & Payout summary cards -->
     <div class="row g-3 mb-4">
         <h3 class="h5 mb-1">Revenue & Payout Summary</h3>
         <div class="col-md-4">
