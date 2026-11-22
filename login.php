@@ -31,7 +31,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 // header("Location: index.php");
                 if ($user["role"] == "Admin") {
                     header("Location: modules/admin_dashboard.php");
-                } else {
+                }elseif ($user["role"] == "Manager") {
+                    header("Location: modules/manager_reports.php");
+                }
+                else {
                     header("Location: index.php");
                 }
                 exit();
