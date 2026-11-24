@@ -25,6 +25,12 @@ if (isset($_GET["min_budget"]) && trim($_GET["min_budget"]) != "") {
     $minBudgetFilter = (float) $_GET["min_budget"];
 }
 
+$statusFilter = "All";
+$allowedProjectStatuses = array("All", "Open", "In Progress", "Completed", "Cancelled");
+if (isset($_GET["project_status"]) && in_array($_GET["project_status"], $allowedProjectStatuses, true)) {
+    $statusFilter = $_GET["project_status"];
+}
+
 if ($error == "") {
     // get activity counts
     $r1 = mysqli_query($conn, "SELECT COUNT(*) AS cnt FROM projects");
@@ -151,8 +157,16 @@ if ($error == "") {
                     <input type="number" step="0.01" name="min_budget" class="form-control form-control-sm"
                             value="<?php echo htmlspecialchars($minBudgetFilter); ?>"
                             placeholder="Min budget ($)...">
+                    <!--Status filter dropdown -->
+                    <select name="project_status" class="form-select form-select-sm" style="width: auto;">
+                        <?php foreach ($allowedProjectStatuses as $stOpt) { ?>
+                            <option value="<?php echo htmlspecialchars($stOpt); ?>" <?php if ($statusFilter == $stOpt) { echo "selected"; } ?>>
+                                <?php echo ($stOpt == "All") ? "All Statuses" : htmlspecialchars($stOpt); ?>
+                            </option>
+                        <?php } ?>
+                    </select>
                     <button type="submit" class="btn btn-sm btn-dark">Filter</button>
-                    <?php if ($minBudgetFilter !== "") { ?>
+                    <?php if ($minBudgetFilter !== "" || $statusFilter != "All") { ?>
                         <a href="manager_reports.php" class="btn btn-sm btn-outline-secondary">Reset</a>
                     <?php } ?>
                 </form>
@@ -197,6 +211,17 @@ if ($error == "") {
                             }
                         }
 
+                        if (count($projRows) > 0 && $statusFilter != "All") {
+                        $filteredProjRows = array();
+                        foreach ($projRows as $r) {
+                            $rowStatus = $r["project_status"] ?? "";
+                            if ($rowStatus == $statusFilter) {
+                                $filteredProjRows[] = $r;
+                            }
+                        }
+                        $projRows = $filteredProjRows;
+                    }
+
                         if (count($projRows) > 0) {
                             foreach ($projRows as $pRow) {
                                 $pId       = $pRow["project_id"] ?? "-";
@@ -232,13 +257,23 @@ if ($error == "") {
                                     $pClient = "-";
                                 }
 
+                        $projBadge = "bg-secondary";
+                        if ($pStatus == "Open") {
+                            $projBadge = "bg-primary";
+                        } elseif ($pStatus == "In Progress") {
+                            $projBadge = "bg-warning text-dark";
+                        } elseif ($pStatus == "Completed") {
+                            $projBadge = "bg-success";
+                        } elseif ($pStatus == "Cancelled" || $pStatus == "Disputed") {
+                            $projBadge = "bg-danger";
+                        }
                         ?>
                             <tr>
                                 <td><?php echo $pId; ?></td>
                                 <td><?php echo htmlspecialchars($pTitle); ?></td>
                                 <td><?php echo htmlspecialchars($pClient); ?></td>
                                 <td>$<?php echo number_format($pBudget, 2); ?></td>
-                                <td><?php echo htmlspecialchars($pStatus); ?></td>
+                                <td><span class="badge <?php echo $projBadge; ?>"><?php echo htmlspecialchars($pStatus); ?></span></td> 
                                 <td><?php echo htmlspecialchars($pDeadline); ?></td>
                             </tr>
                         <?php
@@ -255,54 +290,79 @@ if ($error == "") {
 
     <!-- Freelancers & Clients Reports -->
     <!-- Freelancers -->
-    <div class="row g-4 mb-4">
+<div class="row g-4 mb-4">
         <div class="col-lg-6">
             <div class="card border-0 shadow-sm h-100">
-                <div class="card-body">
-                    <h2 class="h5 mb-3">Freelancers & Ratings Report</h2>
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-sm align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Freelancer</th>
-                                    <th>Rate ($/hr)</th>
-                                    <th>Availability</th>
-                                    <th>Avg Rating</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php
-                                $freeSql = "SELECT u.user_id, u.full_name, f.hourly_rate, f.availability_status
-                                            FROM freelancers f
-                                            JOIN users u ON f.freelancer_id = u.user_id
-                                            ORDER BY u.user_id ASC";
-                                $freeRes = mysqli_query($conn, $freeSql);
-                                if ($freeRes && mysqli_num_rows($freeRes) > 0) {
-                                    while ($fRow = mysqli_fetch_assoc($freeRes)) {
-                                        $uid = (int) $fRow["user_id"];
-                                        $avgRatingText = "N/A";
-                                        $rateRes = mysqli_query($conn, "SELECT fn_FreelancerAvgRating($uid) AS avg_r"); //using fn_FreelancerAvgRating
-                                        if ($rateRes && mysqli_num_rows($rateRes) == 1) {
-                                            $rObj = mysqli_fetch_assoc($rateRes);
-                                            if ($rObj["avg_r"] !== NULL) {
-                                                $avgRatingText = number_format((float) $rObj["avg_r"], 1) . " / 5";
-                                            }
-                                        }
-                                ?>
+                <?php
+                $freeRows = array();
+                $freeSql = "SELECT u.user_id, u.full_name, f.hourly_rate, f.availability_status
+                            FROM freelancers f
+                            JOIN users u ON f.freelancer_id = u.user_id
+                            ORDER BY u.user_id ASC";
+                $freeRes = mysqli_query($conn, $freeSql);
+                if ($freeRes && mysqli_num_rows($freeRes) > 0) {
+                    while ($fRow = mysqli_fetch_assoc($freeRes)) {
+                        $freeRows[] = $fRow;
+                    }
+                }
+                ?>
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center"
+                    role="button" data-bs-toggle="collapse" data-bs-target="#collapseFreelancersReport"
+                    aria-expanded="false">
+                    <h2 class="h5 mb-0">Freelancers & Ratings Report</h2>
+                    <span class="badge bg-primary"><?php echo count($freeRows); ?> Freelancers</span>
+                </div>
+                <div id="collapseFreelancersReport" class="collapse">
+                    <div class="card-body border-top">
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm align-middle mb-0">
+                                <thead class="table-light">
                                     <tr>
-                                        <td><?php echo htmlspecialchars($fRow["full_name"]); ?></td>
-                                        <td>$<?php echo number_format((float) $fRow["hourly_rate"], 2); ?></td>
-                                        <td><?php echo htmlspecialchars($fRow["availability_status"]); ?></td>
-                                        <td><?php echo $avgRatingText; ?></td>
+                                        <th>Freelancer</th>
+                                        <th>Rate ($/hr)</th>
+                                        <th>Availability</th>
+                                        <th>Avg Rating</th>
                                     </tr>
-                                <?php
-                                    }
-                                } else {
-                                ?>
-                                    <tr><td colspan="4" class="text-center text-muted">No freelancers found.</td></tr>
-                                <?php } ?>
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    <?php
+                                    if (count($freeRows) > 0) {
+                                        foreach ($freeRows as $fRow) {
+                                            $uid = (int) $fRow["user_id"];
+                                            $avail = (string) ($fRow["availability_status"] ?? "");
+                                            $availBadge = "bg-secondary";
+                                            if (strcasecmp($avail, "Available") == 0 || strcasecmp($avail, "Active") == 0) {
+                                                $availBadge = "bg-success";
+                                            } elseif (strcasecmp($avail, "Busy") == 0 || strcasecmp($avail, "Assigned") == 0) {
+                                                $availBadge = "bg-warning text-dark";
+                                            } elseif (strcasecmp($avail, "Unavailable") == 0 || strcasecmp($avail, "Offline") == 0) {
+                                                $availBadge = "bg-danger";
+                                            }
+
+                                            $avgRatingText = "N/A";
+                                            $rateRes = mysqli_query($conn, "SELECT fn_FreelancerAvgRating($uid) AS avg_r"); //using fn_FreelancerAvgRating
+                                            if ($rateRes && mysqli_num_rows($rateRes) == 1) {
+                                                $rObj = mysqli_fetch_assoc($rateRes);
+                                                if ($rObj["avg_r"] !== NULL) {
+                                                    $avgRatingText = number_format((float) $rObj["avg_r"], 1) . " / 5";
+                                                }
+                                            }
+                                    ?>
+                                        <tr>
+                                            <td><?php echo htmlspecialchars($fRow["full_name"]); ?></td>
+                                            <td>$<?php echo number_format((float) $fRow["hourly_rate"], 2); ?></td>
+                                            <td><span class="badge <?php echo $availBadge; ?>"><?php echo htmlspecialchars($avail); ?></span></td>
+                                            <td><?php echo $avgRatingText; ?></td>
+                                        </tr>
+                                    <?php
+                                        }
+                                    } else {
+                                    ?>
+                                        <tr><td colspan="4" class="text-center text-muted">No freelancers found.</td></tr>
+                                    <?php } ?>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -311,49 +371,71 @@ if ($error == "") {
         <!-- Clients & Organizations -->
         <div class="col-lg-6">
             <div class="card border-0 shadow-sm h-100">
-                <div class="card-body">
-                    <h2 class="h5 mb-3">Clients & Organizations Report</h2>
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-sm align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Client / Organization</th>
-                                    <th>Type</th>
-                                    <th>Country</th>
-                                    <th>Projects</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php
-                                $cliSql = "SELECT u.full_name, c.client_type, c.organization_name, c.country,
-                                            COUNT(p.project_id) AS project_count
-                                            FROM clients c
-                                            JOIN users u ON c.client_id = u.user_id
-                                            LEFT JOIN projects p ON c.client_id = p.client_id
-                                            GROUP BY c.client_id, u.full_name, c.client_type, c.organization_name, c.country
-                                            ORDER BY project_count DESC, u.full_name ASC";
-                                $cliRes = mysqli_query($conn, $cliSql);
-                                if ($cliRes && mysqli_num_rows($cliRes) > 0) {
-                                    while ($cRow = mysqli_fetch_assoc($cliRes)) {
-                                        $displayClient = $cRow["full_name"];
-                                        if ($cRow["organization_name"] != "") {
-                                            $displayClient .= " (" . $cRow["organization_name"] . ")";
-                                        }
-                                ?>
+                <?php
+                $cliRows = array();
+                $cliSql = "SELECT u.full_name, c.client_type, c.organization_name, c.country,
+                            COUNT(p.project_id) AS project_count
+                            FROM clients c
+                            JOIN users u ON c.client_id = u.user_id
+                            LEFT JOIN projects p ON c.client_id = p.client_id
+                            GROUP BY c.client_id, u.full_name, c.client_type, c.organization_name, c.country
+                            ORDER BY project_count DESC, u.full_name ASC";
+                $cliRes = mysqli_query($conn, $cliSql);
+                if ($cliRes && mysqli_num_rows($cliRes) > 0) {
+                    while ($cRow = mysqli_fetch_assoc($cliRes)) {
+                        $cliRows[] = $cRow;
+                    }
+                }
+                ?>
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center"
+                    role="button" data-bs-toggle="collapse" data-bs-target="#collapseClientsReport"
+                    aria-expanded="false">
+                    <h2 class="h5 mb-0">Clients & Organizations Report</h2>
+                    <span class="badge bg-info text-dark"><?php echo count($cliRows); ?> Clients</span>
+                </div>
+                <div id="collapseClientsReport" class="collapse">
+                    <div class="card-body border-top">
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm align-middle mb-0">
+                                <thead class="table-light">
                                     <tr>
-                                        <td><?php echo htmlspecialchars($displayClient); ?></td>
-                                        <td><?php echo htmlspecialchars($cRow["client_type"]); ?></td>
-                                        <td><?php echo htmlspecialchars($cRow["country"]); ?></td>
-                                        <td><?php echo $cRow["project_count"]; ?></td>
+                                        <th>Client / Organization</th>
+                                        <th>Type</th>
+                                        <th>Country</th>
+                                        <th>Projects</th>
                                     </tr>
-                                <?php
-                                    }
-                                } else {
-                                ?>
-                                    <tr><td colspan="4" class="text-center text-muted">No clients found.</td></tr>
-                                <?php } ?>
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    <?php
+                                    if (count($cliRows) > 0) {
+                                        foreach ($cliRows as $cRow) {
+                                            $displayClient = $cRow["full_name"];
+                                            if ($cRow["organization_name"] != "") {
+                                                $displayClient .= " (" . $cRow["organization_name"] . ")";
+                                            }
+                                            $cType = (string) ($cRow["client_type"] ?? "");
+                                            $typeBadge = "bg-secondary";
+                                            if (strcasecmp($cType, "Organization") == 0 || strcasecmp($cType, "Company") == 0) {
+                                                $typeBadge = "bg-primary";
+                                            } elseif (strcasecmp($cType, "Individual") == 0) {
+                                                $typeBadge = "bg-light text-dark border";
+                                            }
+                                    ?>
+                                        <tr>
+                                            <td><?php echo htmlspecialchars($displayClient); ?></td>
+                                            <td><span class="badge <?php echo $typeBadge; ?>"><?php echo htmlspecialchars($cType); ?></span></td>
+                                            <td><?php echo htmlspecialchars((string) $cRow["country"]); ?></td>
+                                            <td><?php echo (int) $cRow["project_count"]; ?></td>
+                                        </tr>
+                                    <?php
+                                        }
+                                    } else {
+                                    ?>
+                                        <tr><td colspan="4" class="text-center text-muted">No clients found.</td></tr>
+                                    <?php } ?>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -361,97 +443,143 @@ if ($error == "") {
     </div>
 
     <!--AI Services & Payments -->
-    <div class="row g-4">
+<div class="row g-4">
         <div class="col-lg-6">
             <div class="card border-0 shadow-sm h-100">
-                <div class="card-body">
-                    <h2 class="h5 mb-3">AI Services Catalog Report</h2>
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-sm align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Service</th>
-                                    <th>Freelancer</th>
-                                    <th>Price ($)</th>
-                                    <th>Delivery</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php
-                                $srvSql = "SELECT s.service_title, u.full_name AS freelancer_name,
-                                                s.base_price, s.delivery_days
-                                        FROM ai_services s
-                                        JOIN freelancers f ON s.freelancer_id = f.freelancer_id
-                                        JOIN users u ON f.freelancer_id = u.user_id
-                                        WHERE s.is_active = 1
-                                        ORDER BY s.service_id DESC";
-                                $srvRes = mysqli_query($conn, $srvSql);
-                                if ($srvRes && mysqli_num_rows($srvRes) > 0) {
-                                    while ($sRow = mysqli_fetch_assoc($srvRes)) {
-                                ?>
+                <?php
+                $srvRows = array();
+                $srvSql = "SELECT s.service_title, u.full_name AS freelancer_name,
+                                s.base_price, s.delivery_days
+                        FROM ai_services s
+                        JOIN freelancers f ON s.freelancer_id = f.freelancer_id
+                        JOIN users u ON f.freelancer_id = u.user_id
+                        WHERE s.is_active = 1
+                        ORDER BY s.service_id DESC";
+                $srvRes = mysqli_query($conn, $srvSql);
+                if ($srvRes && mysqli_num_rows($srvRes) > 0) {
+                    while ($sRow = mysqli_fetch_assoc($srvRes)) {
+                        $srvRows[] = $sRow;
+                    }
+                }
+                ?>
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center"
+                    role="button" data-bs-toggle="collapse" data-bs-target="#collapseServicesReport"
+                    aria-expanded="false">
+                    <h2 class="h5 mb-0">AI Services Catalog Report</h2>
+                    <span class="badge bg-success"><?php echo count($srvRows); ?> Services</span>
+                </div>
+                <div id="collapseServicesReport" class="collapse">
+                    <div class="card-body border-top">
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm align-middle mb-0">
+                                <thead class="table-light">
                                     <tr>
-                                        <td><?php echo htmlspecialchars($sRow["service_title"]); ?></td>
-                                        <td><?php echo htmlspecialchars($sRow["freelancer_name"]); ?></td>
-                                        <td>$<?php echo number_format((float) $sRow["base_price"], 2); ?></td>
-                                        <td><?php echo $sRow["delivery_days"]; ?> days</td>
+                                        <th>Service</th>
+                                        <th>Freelancer</th>
+                                        <th>Price ($)</th>
+                                        <th>Delivery</th>
                                     </tr>
-                                <?php
-                                    }
-                                } else {
-                                ?>
-                                    <tr><td colspan="4" class="text-center text-muted">No active AI services found.</td></tr>
-                                <?php } ?>
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    <?php
+                                    if (count($srvRows) > 0) {
+                                        foreach ($srvRows as $sRow) {
+                                            $days = (int) $sRow["delivery_days"];
+                                            $delBadge = "bg-info text-dark";
+                                            if ($days <= 3) {
+                                                $delBadge = "bg-success";
+                                            } elseif ($days > 14) {
+                                                $delBadge = "bg-warning text-dark";
+                                            }
+                                    ?>
+                                        <tr>
+                                            <td><?php echo htmlspecialchars($sRow["service_title"]); ?></td>
+                                            <td><?php echo htmlspecialchars($sRow["freelancer_name"]); ?></td>
+                                            <td>$<?php echo number_format((float) $sRow["base_price"], 2); ?></td>
+                                            <td><span class="badge <?php echo $delBadge; ?>"><?php echo $days; ?> days</span></td>
+                                        </tr>
+                                    <?php
+                                        }
+                                    } else {
+                                    ?>
+                                        <tr><td colspan="4" class="text-center text-muted">No active AI services found.</td></tr>
+                                    <?php } ?>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="col-lg-6">
+    <div class="col-lg-6">
             <div class="card border-0 shadow-sm h-100">
-                <div class="card-body">
-                    <h2 class="h5 mb-3">Payments & Payouts Report</h2>
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-sm align-middle mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Pay #</th>
-                                    <th>Assign #</th>
-                                    <th>Amount</th>
-                                    <th>Fee</th>
-                                    <th>Net Payout</th>
-                                    <th>Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php
-                                // Using fn_CalculateNetPayout
-                                $paySql = "SELECT payment_id, assignment_id, amount, platform_fee,
-                                                fn_CalculateNetPayout(amount, platform_fee) AS net_payout,
-                                                payment_status
-                                            FROM payments
-                                            ORDER BY payment_id DESC";
-                                $payRes = mysqli_query($conn, $paySql);
-                                if ($payRes && mysqli_num_rows($payRes) > 0) {
-                                    while ($payRow = mysqli_fetch_assoc($payRes)) {
-                                ?>
+                <?php
+                $payRows = array();
+                // Using fn_CalculateNetPayout
+                $paySql = "SELECT payment_id, assignment_id, amount, platform_fee,
+                                fn_CalculateNetPayout(amount, platform_fee) AS net_payout,
+                                payment_status
+                            FROM payments
+                            ORDER BY payment_id DESC";
+                $payRes = mysqli_query($conn, $paySql);
+                if ($payRes && mysqli_num_rows($payRes) > 0) {
+                    while ($payRow = mysqli_fetch_assoc($payRes)) {
+                        $payRows[] = $payRow;
+                    }
+                }
+                ?>
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center"
+                    role="button" data-bs-toggle="collapse" data-bs-target="#collapsePaymentsReport"
+                    aria-expanded="false">
+                    <h2 class="h5 mb-0">Payments & Payouts Report</h2>
+                    <span class="badge bg-dark"><?php echo count($payRows); ?> Payments</span>
+                </div>
+                <div id="collapsePaymentsReport" class="collapse">
+                    <div class="card-body border-top">
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm align-middle mb-0">
+                                <thead class="table-light">
                                     <tr>
-                                        <td><?php echo $payRow["payment_id"]; ?></td>
-                                        <td><?php echo $payRow["assignment_id"]; ?></td>
-                                        <td>$<?php echo number_format((float) $payRow["amount"], 2); ?></td>
-                                        <td>$<?php echo number_format((float) $payRow["platform_fee"], 2); ?></td>
-                                        <td>$<?php echo number_format((float) $payRow["net_payout"], 2); ?></td>
-                                        <td><?php echo htmlspecialchars($payRow["payment_status"]); ?></td>
+                                        <th>Pay #</th>
+                                        <th>Assign #</th>
+                                        <th>Amount</th>
+                                        <th>Fee</th>
+                                        <th>Net Payout</th>
+                                        <th>Status</th>
                                     </tr>
-                                <?php
-                                    }
-                                } else {
-                                ?>
-                                    <tr><td colspan="6" class="text-center text-muted">No payments found.</td></tr>
-                                <?php } ?>
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    <?php
+                                    if (count($payRows) > 0) {
+                                        foreach ($payRows as $payRow) {
+                                            $pSt = (string) ($payRow["payment_status"] ?? "");
+                                            $payBadge = "bg-secondary";
+                                            if (strcasecmp($pSt, "Completed") == 0 || strcasecmp($pSt, "Paid") == 0) {
+                                                $payBadge = "bg-success";
+                                            } elseif (strcasecmp($pSt, "Pending") == 0 || strcasecmp($pSt, "Processing") == 0) {
+                                                $payBadge = "bg-warning text-dark";
+                                            } elseif (strcasecmp($pSt, "Failed") == 0 || strcasecmp($pSt, "Refunded") == 0 || strcasecmp($pSt, "Cancelled") == 0) {
+                                                $payBadge = "bg-danger";
+                                            }
+                                    ?>
+                                        <tr>
+                                            <td><?php echo (int) $payRow["payment_id"]; ?></td>
+                                            <td><?php echo (int) $payRow["assignment_id"]; ?></td>
+                                            <td>$<?php echo number_format((float) $payRow["amount"], 2); ?></td>
+                                            <td>$<?php echo number_format((float) $payRow["platform_fee"], 2); ?></td>
+                                            <td>$<?php echo number_format((float) $payRow["net_payout"], 2); ?></td>
+                                            <td><span class="badge <?php echo $payBadge; ?>"><?php echo htmlspecialchars($pSt); ?></span></td>
+                                        </tr>
+                                    <?php
+                                        }
+                                    } else {
+                                    ?>
+                                        <tr><td colspan="6" class="text-center text-muted">No payments found.</td></tr>
+                                    <?php } ?>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
