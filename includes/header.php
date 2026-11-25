@@ -82,10 +82,10 @@ $currentRole = $isLoggedIn ? $_SESSION["role"] : "Guest";
 
                         (<?php echo htmlspecialchars($currentRole); ?>)
                     </span>
-                    <a href="<?php echo $basePath; ?>logout.php" class="btn btn-outline-light btn-sm">Logout</a>
+                    <a href="<?php echo $basePath; ?>logout.php" class="btn btn-outline-danger btn-sm">Logout</a>
                 <?php } else { ?>
                     <a href="<?php echo $basePath; ?>login.php" class="btn btn-outline-light btn-sm">Login</a>
-                    <a href="<?php echo $basePath; ?>register.php" class="btn btn-warning btn-sm">Register</a>
+                    <a href="<?php echo $basePath; ?>register.php" class="btn btn-primary btn-sm">Register</a>
                 <?php } ?>
             </div>
         </div>
