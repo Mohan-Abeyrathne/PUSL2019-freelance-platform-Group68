@@ -1,17 +1,16 @@
 <?php
-if (session_status() == PHP_SESSION_NONE) {
+if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-//variable for manage paths
 if (!isset($basePath)) {
     $basePath = "";
 }
 
 $isLoggedIn = isset($_SESSION["user_id"]);
-$currentRole = $isLoggedIn ? $_SESSION["role"] : "Guest";
+$currentRole = $isLoggedIn ? (string) ($_SESSION["role"] ?? "Guest") : "Guest";
+$currentName = $isLoggedIn ? (string) ($_SESSION["full_name"] ?? "User") : "";
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -113,69 +112,54 @@ section.border-top {
 <body class="bg-light d-flex flex-column min-vh-100">
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark shadow-sm">
     <div class="container">
-        <a class="navbar-brand fw-semibold" href="<?php echo $basePath; ?>index.php">AI Freelance.com</a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
+        <a class="navbar-brand fw-semibold" href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>index.php">AI Freelance.com</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav" aria-controls="mainNav" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse" id="mainNav">
             <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                <!-- <li class="nav-item"><a class="nav-link" href="<?php //echo $basePath; ?>index.php">Overview</a></li>
-                <li class="nav-item"><a class="nav-link" href="<?php //echo $basePath; ?>freelancers.php">Freelancers & AI Skills</a></li>
-                <li class="nav-item"><a class="nav-link" href="<?php //echo $basePath; ?>projects.php">Projects</a></li>
-                <li class="nav-item"><a class="nav-link" href="<?php //echo $basePath; ?>proposals.php">Proposals & Assignments</a></li>
-                <li class="nav-item"><a class="nav-link" href="<?php //echo $basePath; ?>payments_reports.php">Payments & Reports</a></li>
-                    <li class="nav-item"><a class="nav-link text-warning" href="modules/admin_dashboard.php">Admin Panel</a></li> -->
-
-                <!--everyone -->
                 <li class="nav-item">
-                    <a class="nav-link" href="<?php echo $basePath; ?>index.php">Overview</a>
-                </li>
-
-                <li class="nav-item">
-                    <a class="nav-link" href="<?php echo $basePath; ?>modules/freelancers.php">Freelancers & AI Skills</a>
+                    <a class="nav-link" href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>index.php">Overview</a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link" href="<?php echo $basePath; ?>modules/projects.php">Projects</a>
+                    <a class="nav-link" href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>modules/freelancers.php">Freelancers &amp; AI Skills</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>modules/projects.php">Projects</a>
                 </li>
 
-                <!--Freelancer and Client -->
-                <?php if ($currentRole == "Freelancer" || $currentRole == "Client") { ?>
+                <?php if ($currentRole === "Freelancer" || $currentRole === "Client") { ?>
                     <li class="nav-item">
-                        <a class="nav-link" href="<?php echo $basePath; ?>modules/proposals.php">Proposals & Assignments</a>
+                        <a class="nav-link" href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>modules/proposals.php">Proposals &amp; Assignments</a>
                     </li>
                     <li class="nav-item">
-                        <a class="nav-link" href="<?php echo $basePath; ?>modules/payments_reviews.php">Payments & Reviews</a>
+                        <a class="nav-link" href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>modules/payments_reviews.php">Payments &amp; Reviews</a>
                     </li>
                 <?php } ?>
 
-                <!-- Manager and Admin -->
-                <?php if ($currentRole == "Manager" || $currentRole == "Admin") { ?>
+                <?php if ($currentRole === "Manager" || $currentRole === "Admin") { ?>
                     <li class="nav-item">
-                        <a class="nav-link text-info" href="<?php echo $basePath; ?>modules/manager_reports.php">Manager Reports</a>
+                        <a class="nav-link text-info" href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>modules/manager_reports.php">Manager Reports</a>
                     </li>
                 <?php } ?>
 
-                <!--Admin only -->
-                <?php if ($currentRole == "Admin") { ?>
+                <?php if ($currentRole === "Admin") { ?>
                     <li class="nav-item">
-                        <a class="nav-link text-warning" href="<?php echo $basePath; ?>modules/admin_dashboard.php">Admin Panel</a>
+                        <a class="nav-link text-warning" href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>modules/admin_dashboard.php">Admin Panel</a>
                     </li>
                 <?php } ?>
             </ul>
 
             <div class="d-flex align-items-center gap-2">
-                <?php //if (isset($_SESSION["user_id"])) { ?>
                 <?php if ($isLoggedIn) { ?>
                     <span class="text-light small">
-                        <?php echo htmlspecialchars($_SESSION["full_name"]); ?>
-                        <?php //echo htmlspecialchars($_SESSION["role"]); ?>
-
-                        (<?php echo htmlspecialchars($currentRole); ?>)
+                        <?php echo htmlspecialchars($currentName, ENT_QUOTES, "UTF-8"); ?>
+                        (<?php echo htmlspecialchars($currentRole, ENT_QUOTES, "UTF-8"); ?>)
                     </span>
-                    <a href="<?php echo $basePath; ?>logout.php" class="btn btn-outline-danger btn-sm">Logout</a>
+                    <a href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>logout.php" class="btn btn-outline-danger btn-sm">Logout</a>
                 <?php } else { ?>
-                    <a href="<?php echo $basePath; ?>login.php" class="btn btn-outline-light btn-sm">Login</a>
-                    <a href="<?php echo $basePath; ?>register.php" class="btn btn-primary btn-sm">Register</a>
+                    <a href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>login.php" class="btn btn-outline-light btn-sm">Login</a>
+                    <a href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>register.php" class="btn btn-primary btn-sm">Register</a>
                 <?php } ?>
             </div>
         </div>
