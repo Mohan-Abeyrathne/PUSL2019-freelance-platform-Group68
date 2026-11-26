@@ -1,6 +1,10 @@
 <?php
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 include "config/db.php";
-include "includes/header.php";
+
 
 $error = "";
 
@@ -46,6 +50,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         }
     }
 }
+include "includes/header.php";
+
 ?>
 
 <div class="row justify-content-center">
