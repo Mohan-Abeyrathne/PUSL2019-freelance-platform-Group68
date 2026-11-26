@@ -92,9 +92,19 @@ $sessionUserId = $isFreelancer ? (int) $_SESSION["user_id"] : 0;
 
 $allowedAvailabilities = array("Available", "Busy", "Unavailable");
 $allowedProficiencies = array("Beginner", "Intermediate", "Expert");
+$allowedAiDomains = array(
+    "Machine Learning",
+    "Deep Learning",
+    "NLP",
+    "Computer Vision",
+    "Generative AI",
+    "Data Analytics"
+);
 $freelancerProfile = null;
 $attachedSkills = array();
 $availableSkills = array();
+$myServices = array();
+$failedEditServiceId = 0;
 
 // Handle Freelancer Workspace Actions (Profile, Skills)
 if ($isFreelancer && $_SERVER["REQUEST_METHOD"] === "POST") {
@@ -282,6 +292,231 @@ if ($isFreelancer && $_SERVER["REQUEST_METHOD"] === "POST") {
                 $error = "Database error while removing skill: " . $ex->getMessage();
             }
         }
+    } elseif ($postAction === "add_service") {
+        $serviceTitle = trim((string) ($_POST["service_title"] ?? ""));
+        $aiDomain = trim((string) ($_POST["ai_domain"] ?? ""));
+        $serviceDesc = trim((string) ($_POST["description"] ?? ""));
+        $basePriceRaw = trim((string) ($_POST["base_price"] ?? ""));
+        $deliveryDaysRaw = trim((string) ($_POST["delivery_days"] ?? ""));
+        $isActive = isset($_POST["is_active"]) ? 1 : 0;
+
+        $serviceErrors = array();
+
+        if ($serviceTitle === "") {
+            $serviceErrors[] = "Service title is required.";
+        } elseif (strlen($serviceTitle) > 150) {
+            $serviceErrors[] = "Service title must not exceed 150 characters.";
+        }
+
+        if (!in_array($aiDomain, $allowedAiDomains, true)) {
+            $serviceErrors[] = "Please select a valid AI domain.";
+        }
+
+        if ($serviceDesc === "") {
+            $serviceErrors[] = "Service description is required.";
+        }
+
+        if ($basePriceRaw === "" || !is_numeric($basePriceRaw)) {
+            $serviceErrors[] = "Please enter a valid numeric base price.";
+        } else {
+            $basePrice = round((float) $basePriceRaw, 2);
+        }
+
+        $deliveryDays = filter_var($deliveryDaysRaw, FILTER_VALIDATE_INT);
+        if ($deliveryDays === false) {
+            $serviceErrors[] = "Delivery days must be a whole number.";
+        }
+
+        if (count($serviceErrors) > 0) {
+            $error = implode(" ", $serviceErrors);
+        } else {
+            try {
+                $insServiceSql = "INSERT INTO ai_services (freelancer_id, service_title, ai_domain, description, base_price, delivery_days, is_active)
+                                  VALUES (?, ?, ?, ?, ?, ?, ?)";
+                $insServiceStmt = mysqli_prepare($conn, $insServiceSql);
+                if ($insServiceStmt) {
+                    mysqli_stmt_bind_param(
+                        $insServiceStmt,
+                        "isssdii",
+                        $sessionUserId,
+                        $serviceTitle,
+                        $aiDomain,
+                        $serviceDesc,
+                        $basePrice,
+                        $deliveryDays,
+                        $isActive
+                    );
+
+                    if (mysqli_stmt_execute($insServiceStmt)) {
+                        $message = "AI service offering '" . $serviceTitle . "' created successfully.";
+                    } else {
+                        $error = "Database rejected service offering: " . mysqli_stmt_error($insServiceStmt);
+                    }
+                    mysqli_stmt_close($insServiceStmt);
+                } else {
+                    $error = "Failed to prepare service creation: " . mysqli_error($conn);
+                }
+            } catch (mysqli_sql_exception $e) {
+                $error = "Database error: " . $e->getMessage();
+            }
+        }
+    } elseif ($postAction === "update_service") {
+        $serviceId = isset($_POST["service_id"]) ? (int) $_POST["service_id"] : 0;
+        $serviceTitle = trim((string) ($_POST["service_title"] ?? ""));
+        $aiDomain = trim((string) ($_POST["ai_domain"] ?? ""));
+        $serviceDesc = trim((string) ($_POST["description"] ?? ""));
+        $basePriceRaw = trim((string) ($_POST["base_price"] ?? ""));
+        $deliveryDaysRaw = trim((string) ($_POST["delivery_days"] ?? ""));
+        $isActive = isset($_POST["is_active"]) ? 1 : 0;
+
+        $serviceErrors = array();
+
+        if ($serviceId <= 0) {
+            $serviceErrors[] = "Invalid service selected for editing.";
+        }
+        if ($serviceTitle === "") {
+            $serviceErrors[] = "Service title is required.";
+        } elseif (strlen($serviceTitle) > 150) {
+            $serviceErrors[] = "Service title must not exceed 150 characters.";
+        }
+        if (!in_array($aiDomain, $allowedAiDomains, true)) {
+            $serviceErrors[] = "Please select a valid AI domain.";
+        }
+        if ($serviceDesc === "") {
+            $serviceErrors[] = "Service description is required.";
+        }
+        if ($basePriceRaw === "" || !is_numeric($basePriceRaw)) {
+            $serviceErrors[] = "Please enter a valid numeric base price.";
+        } else {
+            $basePrice = round((float) $basePriceRaw, 2);
+        }
+        $deliveryDays = filter_var($deliveryDaysRaw, FILTER_VALIDATE_INT);
+        if ($deliveryDays === false) {
+            $serviceErrors[] = "Delivery days must be a whole number.";
+        }
+
+        if (count($serviceErrors) > 0) {
+            $error = implode(" ", $serviceErrors);
+            $failedEditServiceId = $serviceId;
+        } else {
+            try {
+                // Verify ownership first
+                $ownSql = "SELECT 1 FROM ai_services WHERE service_id = ? AND freelancer_id = ? LIMIT 1";
+                $ownStmt = mysqli_prepare($conn, $ownSql);
+                $ownsService = false;
+                if ($ownStmt) {
+                    mysqli_stmt_bind_param($ownStmt, "ii", $serviceId, $sessionUserId);
+                    if (mysqli_stmt_execute($ownStmt)) {
+                        $ownRes = mysqli_stmt_get_result($ownStmt);
+                        if ($ownRes && mysqli_num_rows($ownRes) > 0) {
+                            $ownsService = true;
+                        }
+                    }
+                    mysqli_stmt_close($ownStmt);
+                }
+
+                if (!$ownsService) {
+                    $error = "Service offering not found or you do not have permission to edit it.";
+                } else {
+                    $updServiceSql = "UPDATE ai_services
+                                      SET service_title = ?,
+                                          ai_domain = ?,
+                                          description = ?,
+                                          base_price = ?,
+                                          delivery_days = ?,
+                                          is_active = ?
+                                      WHERE service_id = ? AND freelancer_id = ?";
+                    $updServiceStmt = mysqli_prepare($conn, $updServiceSql);
+                    if ($updServiceStmt) {
+                        mysqli_stmt_bind_param(
+                            $updServiceStmt,
+                            "sssdiiii",
+                            $serviceTitle,
+                            $aiDomain,
+                            $serviceDesc,
+                            $basePrice,
+                            $deliveryDays,
+                            $isActive,
+                            $serviceId,
+                            $sessionUserId
+                        );
+
+                        if (mysqli_stmt_execute($updServiceStmt)) {
+                            $message = "AI service offering '" . $serviceTitle . "' updated successfully.";
+                        } else {
+                            $error = "Database rejected service update: " . mysqli_stmt_error($updServiceStmt);
+                            $failedEditServiceId = $serviceId;
+                        }
+                        mysqli_stmt_close($updServiceStmt);
+                    } else {
+                        $error = "Failed to prepare service update: " . mysqli_error($conn);
+                        $failedEditServiceId = $serviceId;
+                    }
+                }
+            } catch (mysqli_sql_exception $e) {
+                $error = "Database error: " . $e->getMessage();
+                $failedEditServiceId = $serviceId;
+            }
+        }
+    } elseif ($postAction === "toggle_service") {
+        $serviceId = isset($_POST["service_id"]) ? (int) $_POST["service_id"] : 0;
+        $newStatus = (isset($_POST["new_status"]) && (int) $_POST["new_status"] === 1) ? 1 : 0;
+
+        if ($serviceId <= 0) {
+            $error = "Invalid service selected.";
+        } else {
+            try {
+                $toggleSql = "UPDATE ai_services SET is_active = ? WHERE service_id = ? AND freelancer_id = ?";
+                $toggleStmt = mysqli_prepare($conn, $toggleSql);
+                if ($toggleStmt) {
+                    mysqli_stmt_bind_param($toggleStmt, "iii", $newStatus, $serviceId, $sessionUserId);
+                    if (mysqli_stmt_execute($toggleStmt)) {
+                        if (mysqli_stmt_affected_rows($toggleStmt) > 0) {
+                            $message = $newStatus === 1
+                                ? "AI service offering activated."
+                                : "AI service offering marked as inactive.";
+                        } else {
+                            $error = "Service offering not found or status unchanged.";
+                        }
+                    } else {
+                        $error = "Failed to update service status: " . mysqli_stmt_error($toggleStmt);
+                    }
+                    mysqli_stmt_close($toggleStmt);
+                } else {
+                    $error = "Failed to prepare service status update: " . mysqli_error($conn);
+                }
+            } catch (mysqli_sql_exception $e) {
+                $error = "Database error: " . $e->getMessage();
+            }
+        }
+    } elseif ($postAction === "delete_service") {
+        $serviceId = isset($_POST["service_id"]) ? (int) $_POST["service_id"] : 0;
+
+        if ($serviceId <= 0) {
+            $error = "Invalid service selected for deletion.";
+        } else {
+            try {
+                $delServiceSql = "DELETE FROM ai_services WHERE service_id = ? AND freelancer_id = ?";
+                $delServiceStmt = mysqli_prepare($conn, $delServiceSql);
+                if ($delServiceStmt) {
+                    mysqli_stmt_bind_param($delServiceStmt, "ii", $serviceId, $sessionUserId);
+                    if (mysqli_stmt_execute($delServiceStmt)) {
+                        if (mysqli_stmt_affected_rows($delServiceStmt) > 0) {
+                            $message = "AI service offering deleted.";
+                        } else {
+                            $error = "Service offering not found or you do not have permission to delete it.";
+                        }
+                    } else {
+                        $error = "Failed to delete service offering: " . mysqli_stmt_error($delServiceStmt);
+                    }
+                    mysqli_stmt_close($delServiceStmt);
+                } else {
+                    $error = "Failed to prepare service deletion: " . mysqli_error($conn);
+                }
+            } catch (mysqli_sql_exception $e) {
+                $error = "Database error: " . $e->getMessage();
+            }
+        }
     }
 }
 
@@ -379,8 +614,34 @@ if ($isFreelancer) {
                 }
                 mysqli_stmt_close($availSkillsStmt);
             }
+
+            $myServicesSql = "SELECT
+                                  service_id,
+                                  service_title,
+                                  ai_domain,
+                                  description,
+                                  base_price,
+                                  delivery_days,
+                                  is_active,
+                                  created_at
+                              FROM ai_services
+                              WHERE freelancer_id = ?
+                              ORDER BY is_active DESC, created_at DESC, service_id DESC";
+            $myServicesStmt = mysqli_prepare($conn, $myServicesSql);
+            if ($myServicesStmt) {
+                mysqli_stmt_bind_param($myServicesStmt, "i", $sessionUserId);
+                if (mysqli_stmt_execute($myServicesStmt)) {
+                    $myServicesRes = mysqli_stmt_get_result($myServicesStmt);
+                    if ($myServicesRes) {
+                        while ($svRow = mysqli_fetch_assoc($myServicesRes)) {
+                            $myServices[] = $svRow;
+                        }
+                    }
+                }
+                mysqli_stmt_close($myServicesStmt);
+            }
         } catch (mysqli_sql_exception $ex) {
-            $error = ($error !== "" ? $error . " " : "") . "Database error loading AI skills: " . $ex->getMessage();
+            $error = ($error !== "" ? $error . " " : "") . "Database error loading AI skills/services: " . $ex->getMessage();
         }
     }
 }
@@ -784,16 +1045,295 @@ try {
                 </div>
             </div>
 
-            <!-- Section 3: My AI Service Offerings (placeholder for next step) -->
+            <!-- Section 3: My AI Service Offerings -->
+            <?php
+            $keepNewServiceInput = ($_SERVER["REQUEST_METHOD"] === "POST" && (string) ($_POST["action"] ?? "") === "add_service" && $error !== "");
+            $newSvcTitle = $keepNewServiceInput ? (string) ($_POST["service_title"] ?? "") : "";
+            $newSvcDomain = $keepNewServiceInput ? (string) ($_POST["ai_domain"] ?? "Machine Learning") : "Machine Learning";
+            $newSvcDesc = $keepNewServiceInput ? (string) ($_POST["description"] ?? "") : "";
+            $newSvcPrice = $keepNewServiceInput ? (string) ($_POST["base_price"] ?? "") : "";
+            $newSvcDays = $keepNewServiceInput ? (string) ($_POST["delivery_days"] ?? "7") : "7";
+            $newSvcActive = $keepNewServiceInput ? isset($_POST["is_active"]) : true;
+            ?>
             <div class="col-lg-7" id="servicesSection">
                 <div class="card border-0 shadow-sm h-100">
-                    <div class="card-header bg-white py-3">
-                        <h2 class="h5 fw-bold mb-0">My AI Service Offerings</h2>
+                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2 class="h5 fw-bold mb-0">My AI Service Offerings</h2>
+                            <div class="small text-muted">Publish fixed-price AI service packages for clients.</div>
+                        </div>
+                        <span class="badge bg-dark"><?php echo count($myServices); ?> total</span>
                     </div>
-                    <div class="card-body p-4">
-                        <p class="text-muted small mb-0">
-                            Create and manage your fixed-price AI service packages here (coming in the next step).
-                        </p>
+                    <div class="card-body p-4 d-flex flex-column">
+                        <?php if (count($myServices) > 0) { ?>
+                            <div class="d-flex flex-column gap-3 mb-3">
+                                <?php foreach ($myServices as $svc) {
+                                    $svcId = (int) $svc["service_id"];
+                                    $isSvcActive = ((int) $svc["is_active"] === 1);
+                                    $statusBadgeClass = $isSvcActive
+                                        ? "bg-success-subtle text-success border border-success-subtle"
+                                        : "bg-secondary-subtle text-secondary border border-secondary-subtle";
+                                    $statusLabel = $isSvcActive ? "Active" : "Inactive";
+                                    $editCollapseId = "editServiceCollapse_" . $svcId;
+
+                                    $isEditingThis = ($failedEditServiceId === $svcId);
+                                    $editTitle = $isEditingThis ? (string) ($_POST["service_title"] ?? "") : (string) $svc["service_title"];
+                                    $editDomain = $isEditingThis ? (string) ($_POST["ai_domain"] ?? "Machine Learning") : (string) $svc["ai_domain"];
+                                    $editDesc = $isEditingThis ? (string) ($_POST["description"] ?? "") : (string) $svc["description"];
+                                    $editPrice = $isEditingThis
+                                        ? (string) ($_POST["base_price"] ?? "")
+                                        : number_format((float) $svc["base_price"], 2, ".", "");
+                                    $editDays = $isEditingThis ? (string) ($_POST["delivery_days"] ?? "") : (string) (int) $svc["delivery_days"];
+                                    $editActive = $isEditingThis ? isset($_POST["is_active"]) : $isSvcActive;
+                                ?>
+                                    <div class="border rounded p-3 bg-light">
+                                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+                                            <div>
+                                                <h3 class="h6 fw-bold mb-1"><?php echo e($svc["service_title"]); ?></h3>
+                                                <div class="d-flex flex-wrap align-items-center gap-1">
+                                                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle">
+                                                        <?php echo e($svc["ai_domain"]); ?>
+                                                    </span>
+                                                    <span class="badge <?php echo $statusBadgeClass; ?>">
+                                                        <?php echo $statusLabel; ?>
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <div class="text-end">
+                                                <div class="fw-bold text-dark">
+                                                    $<?php echo number_format((float) $svc["base_price"], 2); ?>
+                                                </div>
+                                                <div class="small text-muted">
+                                                    <?php echo (int) $svc["delivery_days"]; ?> day<?php echo ((int) $svc["delivery_days"] === 1) ? "" : "s"; ?> delivery
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <p class="small text-secondary mb-3"><?php echo e($svc["description"]); ?></p>
+
+                                        <div class="d-flex flex-wrap justify-content-end gap-2 pt-2 border-top">
+                                            <form method="POST" action="freelancer_profile.php#servicesSection" class="m-0">
+                                                <input type="hidden" name="action" value="toggle_service">
+                                                <input type="hidden" name="service_id" value="<?php echo $svcId; ?>">
+                                                <input type="hidden" name="new_status" value="<?php echo $isSvcActive ? 0 : 1; ?>">
+                                                <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                                    <?php echo $isSvcActive ? "Deactivate" : "Activate"; ?>
+                                                </button>
+                                            </form>
+
+                                            <button
+                                                type="button"
+                                                class="btn btn-sm btn-outline-dark"
+                                                data-bs-toggle="collapse"
+                                                data-bs-target="#<?php echo e($editCollapseId); ?>"
+                                                aria-expanded="<?php echo $isEditingThis ? "true" : "false"; ?>"
+                                                aria-controls="<?php echo e($editCollapseId); ?>"
+                                            >
+                                                Edit
+                                            </button>
+
+                                            <form method="POST"
+                                                  action="freelancer_profile.php#servicesSection"
+                                                  class="m-0"
+                                                  onsubmit="return confirm('Delete this AI service offering?');">
+                                                <input type="hidden" name="action" value="delete_service">
+                                                <input type="hidden" name="service_id" value="<?php echo $svcId; ?>">
+                                                <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                            </form>
+                                        </div>
+
+                                        <!-- Inline Edit Form -->
+                                        <div class="collapse <?php echo $isEditingThis ? "show" : ""; ?> mt-3" id="<?php echo e($editCollapseId); ?>">
+                                            <form method="POST" action="freelancer_profile.php#servicesSection" class="border rounded bg-white p-3 row g-2">
+                                                <input type="hidden" name="action" value="update_service">
+                                                <input type="hidden" name="service_id" value="<?php echo $svcId; ?>">
+
+                                                <div class="col-md-7">
+                                                    <label class="form-label small fw-semibold mb-1">Service Title</label>
+                                                    <input
+                                                        type="text"
+                                                        name="service_title"
+                                                        class="form-control form-control-sm"
+                                                        maxlength="150"
+                                                        value="<?php echo e($editTitle); ?>"
+                                                        required
+                                                    >
+                                                </div>
+
+                                                <div class="col-md-5">
+                                                    <label class="form-label small fw-semibold mb-1">AI Domain</label>
+                                                    <select name="ai_domain" class="form-select form-select-sm" required>
+                                                        <?php foreach ($allowedAiDomains as $domOpt) { ?>
+                                                            <option value="<?php echo e($domOpt); ?>" <?php echo ($editDomain === $domOpt) ? "selected" : ""; ?>>
+                                                                <?php echo e($domOpt); ?>
+                                                            </option>
+                                                        <?php } ?>
+                                                    </select>
+                                                </div>
+
+                                                <div class="col-md-4">
+                                                    <label class="form-label small fw-semibold mb-1">Base Price ($ USD)</label>
+                                                    <input
+                                                        type="number"
+                                                        name="base_price"
+                                                        class="form-control form-control-sm"
+                                                        step="0.01"
+                                                        value="<?php echo e($editPrice); ?>"
+                                                        required
+                                                    >
+                                                </div>
+
+                                                <div class="col-md-4">
+                                                    <label class="form-label small fw-semibold mb-1">Delivery Days</label>
+                                                    <input
+                                                        type="number"
+                                                        name="delivery_days"
+                                                        class="form-control form-control-sm"
+                                                        step="1"
+                                                        value="<?php echo e($editDays); ?>"
+                                                        required
+                                                    >
+                                                </div>
+
+                                                <div class="col-md-4 d-flex align-items-end">
+                                                    <div class="form-check mb-1">
+                                                        <input
+                                                            class="form-check-input"
+                                                            type="checkbox"
+                                                            name="is_active"
+                                                            value="1"
+                                                            id="editActive_<?php echo $svcId; ?>"
+                                                            <?php echo $editActive ? "checked" : ""; ?>
+                                                        >
+                                                        <label class="form-check-label small fw-semibold" for="editActive_<?php echo $svcId; ?>">
+                                                            Active Listing
+                                                        </label>
+                                                    </div>
+                                                </div>
+
+                                                <div class="col-12">
+                                                    <label class="form-label small fw-semibold mb-1">Description</label>
+                                                    <textarea
+                                                        name="description"
+                                                        class="form-control form-control-sm"
+                                                        rows="2"
+                                                        required
+                                                    ><?php echo e($editDesc); ?></textarea>
+                                                </div>
+
+                                                <div class="col-12 d-flex justify-content-end gap-2 mt-2">
+                                                    <button
+                                                        type="button"
+                                                        class="btn btn-sm btn-outline-secondary"
+                                                        data-bs-toggle="collapse"
+                                                        data-bs-target="#<?php echo e($editCollapseId); ?>"
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                    <button type="submit" class="btn btn-sm btn-primary">Save Changes</button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                <?php } ?>
+                            </div>
+                        <?php } else { ?>
+                            <div class="alert alert-light border text-muted small mb-3">
+                                No AI service offerings created yet. Use the form below to publish your first service package.
+                            </div>
+                        <?php } ?>
+
+                        <hr class="my-3">
+
+                        <h3 class="h6 fw-bold mb-3">Create New AI Service Offering</h3>
+                        <form method="POST" action="freelancer_profile.php#servicesSection" class="row g-2">
+                            <input type="hidden" name="action" value="add_service">
+
+                            <div class="col-md-7">
+                                <label for="newServiceTitle" class="form-label small fw-semibold mb-1">Service Title</label>
+                                <input
+                                    type="text"
+                                    id="newServiceTitle"
+                                    name="service_title"
+                                    class="form-control form-control-sm"
+                                    maxlength="150"
+                                    value="<?php echo e($newSvcTitle); ?>"
+                                    placeholder="e.g. Private Knowledge Base RAG Assistant"
+                                    required
+                                >
+                            </div>
+
+                            <div class="col-md-5">
+                                <label for="newServiceDomain" class="form-label small fw-semibold mb-1">AI Domain</label>
+                                <select id="newServiceDomain" name="ai_domain" class="form-select form-select-sm" required>
+                                    <?php foreach ($allowedAiDomains as $domOpt) { ?>
+                                        <option value="<?php echo e($domOpt); ?>" <?php echo ($newSvcDomain === $domOpt) ? "selected" : ""; ?>>
+                                            <?php echo e($domOpt); ?>
+                                        </option>
+                                    <?php } ?>
+                                </select>
+                            </div>
+
+                            <div class="col-md-4">
+                                <label for="newServicePrice" class="form-label small fw-semibold mb-1">Base Price ($ USD)</label>
+                                <input
+                                    type="number"
+                                    id="newServicePrice"
+                                    name="base_price"
+                                    class="form-control form-control-sm"
+                                    step="0.01"
+                                    value="<?php echo e($newSvcPrice); ?>"
+                                    placeholder="500.00"
+                                    required
+                                >
+                            </div>
+
+                            <div class="col-md-4">
+                                <label for="newServiceDays" class="form-label small fw-semibold mb-1">Delivery Days</label>
+                                <input
+                                    type="number"
+                                    id="newServiceDays"
+                                    name="delivery_days"
+                                    class="form-control form-control-sm"
+                                    step="1"
+                                    value="<?php echo e($newSvcDays); ?>"
+                                    required
+                                >
+                            </div>
+
+                            <div class="col-md-4 d-flex align-items-end">
+                                <div class="form-check mb-1">
+                                    <input
+                                        class="form-check-input"
+                                        type="checkbox"
+                                        name="is_active"
+                                        value="1"
+                                        id="newServiceActive"
+                                        <?php echo $newSvcActive ? "checked" : ""; ?>
+                                    >
+                                    <label class="form-check-label small fw-semibold" for="newServiceActive">
+                                        Active Immediately
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="col-12">
+                                <label for="newServiceDesc" class="form-label small fw-semibold mb-1">Description</label>
+                                <textarea
+                                    id="newServiceDesc"
+                                    name="description"
+                                    class="form-control form-control-sm"
+                                    rows="3"
+                                    placeholder="Outline scope, deliverables, model stack, and evaluation metrics..."
+                                    required
+                                ><?php echo e($newSvcDesc); ?></textarea>
+                                <div class="form-text">Base price must be greater than $0.00 and delivery days at least 1.</div>
+                            </div>
+
+                            <div class="col-12 mt-2">
+                                <button type="submit" class="btn btn-dark btn-sm w-100">Create Service Offering</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             </div>
