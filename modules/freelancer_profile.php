@@ -91,9 +91,12 @@ $isFreelancer = ($isLoggedIn && $currentRole === "Freelancer");
 $sessionUserId = $isFreelancer ? (int) $_SESSION["user_id"] : 0;
 
 $allowedAvailabilities = array("Available", "Busy", "Unavailable");
+$allowedProficiencies = array("Beginner", "Intermediate", "Expert");
 $freelancerProfile = null;
+$attachedSkills = array();
+$availableSkills = array();
 
-// Handle Profile & Availability Update (Freelancer only)
+// Handle Freelancer Workspace Actions (Profile, Skills)
 if ($isFreelancer && $_SERVER["REQUEST_METHOD"] === "POST") {
     $postAction = (string) ($_POST["action"] ?? "");
 
@@ -169,6 +172,116 @@ if ($isFreelancer && $_SERVER["REQUEST_METHOD"] === "POST") {
                 $error = "Database error while updating profile: " . $ex->getMessage();
             }
         }
+    } elseif ($postAction === "add_skill") {
+        $skillId = isset($_POST["skill_id"]) ? (int) $_POST["skill_id"] : 0;
+        $proficiencyLevel = trim((string) ($_POST["proficiency_level"] ?? ""));
+        $yearsUsedRaw = trim((string) ($_POST["years_used"] ?? ""));
+
+        $skillErrors = array();
+
+        if ($skillId <= 0) {
+            $skillErrors[] = "Please select an AI skill to attach.";
+        }
+        if (!in_array($proficiencyLevel, $allowedProficiencies, true)) {
+            $skillErrors[] = "Please select a valid proficiency level.";
+        }
+        $yearsUsed = filter_var($yearsUsedRaw, FILTER_VALIDATE_INT);
+        if ($yearsUsed === false || $yearsUsed < 0) {
+            $skillErrors[] = "Years used must be a whole number of 0 or more.";
+        }
+
+        if (count($skillErrors) > 0) {
+            $error = implode(" ", $skillErrors);
+        } else {
+            try {
+                // Verify the skill exists in ai_skills
+                $skillLookupSql = "SELECT skill_id, skill_name FROM ai_skills WHERE skill_id = ? LIMIT 1";
+                $skillLookupStmt = mysqli_prepare($conn, $skillLookupSql);
+                $skillRow = null;
+                if ($skillLookupStmt) {
+                    mysqli_stmt_bind_param($skillLookupStmt, "i", $skillId);
+                    if (mysqli_stmt_execute($skillLookupStmt)) {
+                        $skillLookupRes = mysqli_stmt_get_result($skillLookupStmt);
+                        if ($skillLookupRes) {
+                            $skillRow = mysqli_fetch_assoc($skillLookupRes);
+                        }
+                    }
+                    mysqli_stmt_close($skillLookupStmt);
+                }
+
+                if (!$skillRow) {
+                    $error = "Selected AI skill does not exist.";
+                } else {
+                    // Check for duplicate mapping gracefully
+                    $dupSql = "SELECT 1 FROM freelancer_skills WHERE freelancer_id = ? AND skill_id = ? LIMIT 1";
+                    $dupStmt = mysqli_prepare($conn, $dupSql);
+                    $alreadyAttached = false;
+                    if ($dupStmt) {
+                        mysqli_stmt_bind_param($dupStmt, "ii", $sessionUserId, $skillId);
+                        if (mysqli_stmt_execute($dupStmt)) {
+                            $dupRes = mysqli_stmt_get_result($dupStmt);
+                            if ($dupRes && mysqli_num_rows($dupRes) > 0) {
+                                $alreadyAttached = true;
+                            }
+                        }
+                        mysqli_stmt_close($dupStmt);
+                    }
+
+                    if ($alreadyAttached) {
+                        $error = "The skill '" . (string) $skillRow["skill_name"] . "' is already attached to your profile.";
+                    } else {
+                        $insertSkillSql = "INSERT INTO freelancer_skills (freelancer_id, skill_id, proficiency_level, years_used)
+                                           VALUES (?, ?, ?, ?)";
+                        $insertSkillStmt = mysqli_prepare($conn, $insertSkillSql);
+                        if ($insertSkillStmt) {
+                            mysqli_stmt_bind_param($insertSkillStmt, "iisi", $sessionUserId, $skillId, $proficiencyLevel, $yearsUsed);
+                            if (mysqli_stmt_execute($insertSkillStmt)) {
+                                $message = "AI skill '" . (string) $skillRow["skill_name"] . "' attached to your profile.";
+                            } else {
+                                $error = "Failed to attach AI skill: " . mysqli_stmt_error($insertSkillStmt);
+                            }
+                            mysqli_stmt_close($insertSkillStmt);
+                        } else {
+                            $error = "Failed to prepare skill attachment: " . mysqli_error($conn);
+                        }
+                    }
+                }
+            } catch (mysqli_sql_exception $ex) {
+                if ((int) $ex->getCode() === 1062) {
+                    $error = "This AI skill is already attached to your profile.";
+                } else {
+                    $error = "Database error while attaching skill: " . $ex->getMessage();
+                }
+            }
+        }
+    } elseif ($postAction === "remove_skill") {
+        $skillId = isset($_POST["skill_id"]) ? (int) $_POST["skill_id"] : 0;
+
+        if ($skillId <= 0) {
+            $error = "Invalid AI skill selected for removal.";
+        } else {
+            try {
+                $deleteSkillSql = "DELETE FROM freelancer_skills WHERE freelancer_id = ? AND skill_id = ?";
+                $deleteSkillStmt = mysqli_prepare($conn, $deleteSkillSql);
+                if ($deleteSkillStmt) {
+                    mysqli_stmt_bind_param($deleteSkillStmt, "ii", $sessionUserId, $skillId);
+                    if (mysqli_stmt_execute($deleteSkillStmt)) {
+                        if (mysqli_stmt_affected_rows($deleteSkillStmt) > 0) {
+                            $message = "AI skill removed from your profile.";
+                        } else {
+                            $error = "That AI skill was not found on your profile.";
+                        }
+                    } else {
+                        $error = "Failed to remove AI skill: " . mysqli_stmt_error($deleteSkillStmt);
+                    }
+                    mysqli_stmt_close($deleteSkillStmt);
+                } else {
+                    $error = "Failed to prepare skill removal: " . mysqli_error($conn);
+                }
+            } catch (mysqli_sql_exception $ex) {
+                $error = "Database error while removing skill: " . $ex->getMessage();
+            }
+        }
     }
 }
 
@@ -211,6 +324,64 @@ if ($isFreelancer) {
 
     if (!$freelancerProfile && $error === "") {
         $error = "No freelancer profile record was found for your user account.";
+    }
+
+    // Fetch attached AI skills and remaining unattached skills for this freelancer
+    if ($freelancerProfile) {
+        try {
+            $mySkillsSql = "SELECT
+                                fs.skill_id,
+                                sk.skill_name,
+                                sk.ai_domain,
+                                sk.description,
+                                fs.proficiency_level,
+                                fs.years_used
+                            FROM freelancer_skills fs
+                            INNER JOIN ai_skills sk ON fs.skill_id = sk.skill_id
+                            WHERE fs.freelancer_id = ?
+                            ORDER BY FIELD(fs.proficiency_level, 'Expert', 'Intermediate', 'Beginner'), sk.skill_name ASC";
+            $mySkillsStmt = mysqli_prepare($conn, $mySkillsSql);
+            if ($mySkillsStmt) {
+                mysqli_stmt_bind_param($mySkillsStmt, "i", $sessionUserId);
+                if (mysqli_stmt_execute($mySkillsStmt)) {
+                    $mySkillsRes = mysqli_stmt_get_result($mySkillsStmt);
+                    if ($mySkillsRes) {
+                        while ($skRow = mysqli_fetch_assoc($mySkillsRes)) {
+                            $attachedSkills[] = $skRow;
+                        }
+                    }
+                }
+                mysqli_stmt_close($mySkillsStmt);
+            }
+
+            $availSkillsSql = "SELECT
+                                   sk.skill_id,
+                                   sk.skill_name,
+                                   sk.ai_domain
+                               FROM ai_skills sk
+                               WHERE NOT EXISTS (
+                                   SELECT 1
+                                   FROM freelancer_skills fs
+                                   WHERE fs.freelancer_id = ?
+                                     AND fs.skill_id = sk.skill_id
+                               )
+                               ORDER BY sk.ai_domain ASC, sk.skill_name ASC";
+            $availSkillsStmt = mysqli_prepare($conn, $availSkillsSql);
+            if ($availSkillsStmt) {
+                mysqli_stmt_bind_param($availSkillsStmt, "i", $sessionUserId);
+                if (mysqli_stmt_execute($availSkillsStmt)) {
+                    $availSkillsRes = mysqli_stmt_get_result($availSkillsStmt);
+                    if ($availSkillsRes) {
+                        while ($avRow = mysqli_fetch_assoc($availSkillsRes)) {
+                            $availableSkills[] = $avRow;
+                        }
+                    }
+                }
+                mysqli_stmt_close($availSkillsStmt);
+            }
+        } catch (mysqli_sql_exception $ex) {
+            $error = ($error !== "" ? $error . " " : "") . "Database error loading AI skills: " . $ex->getMessage();
+        }
     }
 }
 
@@ -491,16 +662,124 @@ try {
 
         <!-- Upcoming Workspace Sections (Skills & Services) -->
         <div class="row g-4">
-            <!-- Section 2: My AI Skills (placeholder for next step) -->
+            <!-- Section 2: My AI Skills -->
             <div class="col-lg-5" id="skillsSection">
                 <div class="card border-0 shadow-sm h-100">
-                    <div class="card-header bg-white py-3">
-                        <h2 class="h5 fw-bold mb-0">My AI Skills</h2>
+                    <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                        <div>
+                            <h2 class="h5 fw-bold mb-0">My AI Skills</h2>
+                            <div class="small text-muted">Showcase your technical AI specializations.</div>
+                        </div>
+                        <span class="badge bg-dark"><?php echo count($attachedSkills); ?> attached</span>
                     </div>
-                    <div class="card-body p-4">
-                        <p class="text-muted small mb-0">
-                            Attach your AI skills and proficiency levels here (coming in the next step).
-                        </p>
+                    <div class="card-body p-4 d-flex flex-column">
+                        <?php if (count($attachedSkills) > 0) { ?>
+                            <div class="d-flex flex-column gap-2 mb-3">
+                                <?php foreach ($attachedSkills as $sk) {
+                                    $prof = (string) $sk["proficiency_level"];
+                                    $profBadgeClass = "bg-light text-dark border";
+                                    if ($prof === "Expert") {
+                                        $profBadgeClass = "bg-primary-subtle text-primary border border-primary-subtle";
+                                    } elseif ($prof === "Intermediate") {
+                                        $profBadgeClass = "bg-info-subtle text-info-emphasis border border-info-subtle";
+                                    }
+                                    $yrs = (int) $sk["years_used"];
+                                ?>
+                                    <div class="border rounded p-3 bg-light d-flex justify-content-between align-items-start gap-2">
+                                        <div>
+                                            <div class="fw-semibold text-dark"><?php echo e($sk["skill_name"]); ?></div>
+                                            <div class="d-flex flex-wrap align-items-center gap-1 mt-1">
+                                                <span class="badge bg-white text-secondary border"><?php echo e($sk["ai_domain"]); ?></span>
+                                                <span class="badge <?php echo $profBadgeClass; ?>"><?php echo e($prof); ?></span>
+                                                <span class="text-muted small ms-1"><?php echo $yrs; ?> yr<?php echo ($yrs === 1) ? "" : "s"; ?></span>
+                                            </div>
+                                        </div>
+                                        <form method="POST"
+                                              action="freelancer_profile.php#skillsSection"
+                                              class="m-0 flex-shrink-0"
+                                              onsubmit="return confirm('Remove this AI skill from your profile?');">
+                                            <input type="hidden" name="action" value="remove_skill">
+                                            <input type="hidden" name="skill_id" value="<?php echo (int) $sk["skill_id"]; ?>">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger" title="Remove skill">Remove</button>
+                                        </form>
+                                    </div>
+                                <?php } ?>
+                            </div>
+                        <?php } else { ?>
+                            <div class="alert alert-light border text-muted small mb-3">
+                                No AI skills attached yet. Use the form below to add your skills.
+                            </div>
+                        <?php } ?>
+
+                        <hr class="my-3">
+
+                        <h3 class="h6 fw-bold mb-3">Attach Existing AI Skill</h3>
+                        <?php if (count($availableSkills) > 0) { ?>
+                            <form method="POST" action="freelancer_profile.php#skillsSection" class="row g-2">
+                                <input type="hidden" name="action" value="add_skill">
+
+                                <div class="col-12">
+                                    <label for="attachSkillSelect" class="form-label small fw-semibold mb-1">AI Skill</label>
+                                    <select id="attachSkillSelect" name="skill_id" class="form-select form-select-sm" required>
+                                        <option value="">-- Select an AI skill --</option>
+                                        <?php
+                                        $skillGroupDomain = null;
+                                        foreach ($availableSkills as $avSk) {
+                                            $avDomain = (string) $avSk["ai_domain"];
+                                            if ($avDomain !== $skillGroupDomain) {
+                                                if ($skillGroupDomain !== null) {
+                                                    echo "</optgroup>";
+                                                }
+                                                echo '<optgroup label="' . e($avDomain) . '">';
+                                                $skillGroupDomain = $avDomain;
+                                            }
+                                        ?>
+                                            <option value="<?php echo (int) $avSk["skill_id"]; ?>">
+                                                <?php echo e($avSk["skill_name"]); ?>
+                                            </option>
+                                        <?php
+                                        }
+                                        if ($skillGroupDomain !== null) {
+                                            echo "</optgroup>";
+                                        }
+                                        ?>
+                                    </select>
+                                </div>
+
+                                <div class="col-7">
+                                    <label for="proficiencySelect" class="form-label small fw-semibold mb-1">Proficiency Level</label>
+                                    <select id="proficiencySelect" name="proficiency_level" class="form-select form-select-sm" required>
+                                        <?php foreach ($allowedProficiencies as $profOpt) { ?>
+                                            <option value="<?php echo e($profOpt); ?>" <?php echo ($profOpt === "Intermediate") ? "selected" : ""; ?>>
+                                                <?php echo e($profOpt); ?>
+                                            </option>
+                                        <?php } ?>
+                                    </select>
+                                </div>
+
+                                <div class="col-5">
+                                    <label for="yearsUsedInput" class="form-label small fw-semibold mb-1">Years Used</label>
+                                    <input
+                                        type="number"
+                                        id="yearsUsedInput"
+                                        name="years_used"
+                                        class="form-control form-control-sm"
+                                        step="1"
+                                        min="0"
+                                        value="1"
+                                        required
+                                    >
+                                </div>
+
+                                <div class="col-12 mt-2">
+                                    <button type="submit" class="btn btn-dark btn-sm w-100">Attach Skill</button>
+                                </div>
+                            </form>
+                        <?php } else { ?>
+                            <div class="small text-muted">
+                                All catalog AI skills are already attached to your profile.
+                            </div>
+                        <?php } ?>
                     </div>
                 </div>
             </div>
