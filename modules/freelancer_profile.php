@@ -11,6 +11,9 @@ $basePath = "../";
 include "../config/db.php";
 
 global $conn;
+global $currentRole;
+global $isLoggedIn;
+global $currentName;
 
 $message = "";
 $error = "";
@@ -697,50 +700,6 @@ try {
                 <div class="alert alert-danger"><?php echo e($error); ?></div>
             <?php } ?>
 
-            <!-- Standalone Demo Sign-In Card (works directly inside <main> without login.php / logout.php) -->
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white py-3">
-                    <h2 class="h5 mb-0">Freelancer Workspace Sign-In (Demo Mode)</h2>
-                </div>
-                <div class="card-body p-4">
-                    <p class="text-muted small mb-3">
-                        Choose a freelancer profile below to sign in and test the Freelancer Workspace directly on this page.
-                    </p>
-
-                    <?php if (count($demoFreelancers) > 0) { ?>
-                        <form method="POST" action="freelancer_profile.php" class="row g-3">
-                            <input type="hidden" name="action" value="demo_login">
-                            <div class="col-12">
-                                <label for="demoFreelancerSelect" class="form-label fw-semibold">Select Freelancer Account</label>
-                                <select id="demoFreelancerSelect" name="demo_freelancer_id" class="form-select" required>
-                                    <option value="">-- Choose a freelancer --</option>
-                                    <?php foreach ($demoFreelancers as $df) { ?>
-                                        <option value="<?php echo (int) $df["freelancer_id"]; ?>">
-                                            <?php echo e($df["full_name"]); ?> (<?php echo e($df["email"]); ?>) &mdash; <?php echo e($df["availability_status"]); ?>
-                                        </option>
-                                    <?php } ?>
-                                </select>
-                            </div>
-                            <div class="col-12 d-flex flex-wrap gap-2">
-                                <button type="submit" class="btn btn-dark">Sign In as Freelancer</button>
-                                <a href="freelancers.php" class="btn btn-outline-secondary">Browse Public Directory</a>
-                            </div>
-                        </form>
-                    <?php } else { ?>
-                        <div class="alert alert-light border text-muted mb-0">
-                            No freelancer records found in the database. Make sure <code>database/02_seed_data.sql</code> has been imported.
-                        </div>
-                    <?php } ?>
-
-                    <?php if ($isLoggedIn) { ?>
-                        <hr class="my-4">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span class="small text-muted">Clear current session (<?php echo e($currentRole); ?>)</span>
-                            <a href="freelancer_profile.php?action=logout" class="btn btn-sm btn-outline-danger">Switch Freelancer / Logout</a>
-                        </div>
-                    <?php } ?>
-                </div>
-            </div>
         </div>
     </div>
 <?php } else { ?>
@@ -797,26 +756,6 @@ try {
                             &middot; <?php echo e($freelancerProfile["email"]); ?>
                         </div>
                     <?php } ?>
-                </div>
-
-                <div class="d-flex flex-wrap align-items-center gap-2">
-                    <a href="freelancers.php" class="btn btn-sm btn-outline-dark">View Public Directory</a>
-
-                    <?php if (count($demoFreelancers) > 1) { ?>
-                        <form method="POST" action="freelancer_profile.php" class="d-flex align-items-center gap-1">
-                            <input type="hidden" name="action" value="demo_login">
-                            <select name="demo_freelancer_id" class="form-select form-select-sm" aria-label="Switch demo freelancer" onchange="this.form.submit()">
-                                <option value="">Switch demo user...</option>
-                                <?php foreach ($demoFreelancers as $df) { ?>
-                                    <option value="<?php echo (int) $df["freelancer_id"]; ?>" <?php echo ((int) $df["freelancer_id"] === $sessionUserId) ? "selected" : ""; ?>>
-                                        <?php echo e($df["full_name"]); ?>
-                                    </option>
-                                <?php } ?>
-                            </select>
-                        </form>
-                    <?php } ?>
-
-                    <a href="freelancer_profile.php?action=logout" class="btn btn-sm btn-outline-danger">Switch Freelancer / Logout</a>
                 </div>
             </div>
         </div>

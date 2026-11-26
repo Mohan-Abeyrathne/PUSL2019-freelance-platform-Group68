@@ -151,17 +151,24 @@ section.border-top {
             </ul>
 
             <div class="d-flex align-items-center gap-2">
-                <?php if ($isLoggedIn) { ?>
-                    <span class="text-light small">
-                        <?php echo htmlspecialchars($currentName, ENT_QUOTES, "UTF-8"); ?>
-                        (<?php echo htmlspecialchars($currentRole, ENT_QUOTES, "UTF-8"); ?>)
-                    </span>
-                    <a href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>logout.php" class="btn btn-outline-danger btn-sm">Logout</a>
-                <?php } else { ?>
-                    <a href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>login.php" class="btn btn-outline-light btn-sm">Login</a>
-                    <a href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>register.php" class="btn btn-primary btn-sm">Register</a>
-                <?php } ?>
-            </div>
+    <?php if ($isLoggedIn) { ?>
+        <span class="text-light small">
+            <?php echo htmlspecialchars($currentName, ENT_QUOTES, "UTF-8"); ?>
+            (<?php echo htmlspecialchars($currentRole, ENT_QUOTES, "UTF-8"); ?>)
+        </span>
+
+        <?php if ($currentRole === "Freelancer") { ?>
+            <a href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>modules/freelancer_profile.php?id=<?php echo (int) ($_SESSION["user_id"] ?? 0); ?>" class="btn btn-outline-info btn-sm">
+                My Profile
+            </a>
+        <?php } ?>
+
+        <a href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>logout.php" class="btn btn-outline-danger btn-sm">Logout</a>
+    <?php } else { ?>
+        <a href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>login.php" class="btn btn-outline-light btn-sm">Login</a>
+        <a href="<?php echo htmlspecialchars($basePath, ENT_QUOTES, "UTF-8"); ?>register.php" class="btn btn-primary btn-sm">Register</a>
+    <?php } ?>
+</div>
         </div>
     </div>
 </nav>
