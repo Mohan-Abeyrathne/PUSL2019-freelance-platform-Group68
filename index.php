@@ -115,7 +115,7 @@ if ($revRes && mysqli_num_rows($revRes) > 0) {
 
 <!-- hero section -->
 <div class="rounded-3 overflow-hidden shadow-sm mb-5 position-relative text-white"
-    style="background: linear-gradient(rgba(15, 23, 42, 0.78), rgba(15, 23, 42, 0.85)), url('assets/images/hero-banner.jpg') center/cover no-repeat; background-color: #0f172a;">
+    style="background: linear-gradient(rgba(15, 23, 42, 0.78), rgba(120, 126, 142, 0.85)), url('assets/images/hero-banner.jpg') center/cover no-repeat; background-color: #0f172a;">
     <div class="p-4 p-md-5">
         <div class="row align-items-center">
             <div class="col-lg-6">
