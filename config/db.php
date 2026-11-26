@@ -1,4 +1,8 @@
 <?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 $host = "localhost";
 $user = "root";
 $pass = "";
@@ -10,5 +14,5 @@ if (!$conn) {
     die("Database connection failed: " . mysqli_connect_error());
 }
 
-// echo "Database connected!";
+mysqli_set_charset($conn, "utf8mb4");
 ?>

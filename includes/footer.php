@@ -1,7 +1,7 @@
 </main>
 <footer class="bg-white border-top py-3 mt-auto">
     <div class="container d-flex flex-wrap justify-content-between align-items-center small text-muted">
-        <span>PUSL2019 Information Management Retrieval</span>
+        <span>PUSL2019 Information Management &amp; Retrieval</span>
         <span>AI Freelancing Platform</span>
     </div>
 </footer>
